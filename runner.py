@@ -1,5 +1,8 @@
 import numpy as np
 from pyscf import gto, scf, dft
+import time
+
+t0 = time.perf_counter()
 
 AMU2AU = 1822.888486209
 ANG2BOHR = 1.8897261246257702
@@ -189,4 +192,9 @@ if __name__ == "__main__":
     print("Version 0.1")
     print("G. Botti")
     print()
-    run_bomd()
+    #run_bomd()
+    try:
+        run_bomd()
+    finally:
+        elapsed = time.perf_counter() - t0
+        print(f"\nTotal BOMD wall time: {elapsed:.2f} s", flush=True)
