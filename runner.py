@@ -1,5 +1,6 @@
+import re
 import numpy as np
-from pyscf import gto, scf, dft
+#from pyscf import gto, scf, dft
 import time
 
 t0 = time.perf_counter()
@@ -9,6 +10,41 @@ ANG2BOHR = 1.8897261246257702
 BOHR2ANG = 1.0 / ANG2BOHR
 FS2AU = 41.3413745758
 AU2FS = 1.0 / FS2AU
+CM1_TO_AU = 1.0 / 219474.6313705  # cm^-1 -> atomic units
+AU_TO_CM1 = 219474.6313705
+
+
+def read_cnorm(filename):
+    """
+    Read VEGETA cnorm.dat.
+
+    Returns
+    -------
+    cnorm : ndarray
+        Scaled Hessian eigenvectors.
+    omega2_au : ndarray
+        Squared frequencies (eigenvalues of the scaled Hessian) in a.u.
+    """
+
+    data = np.loadtxt(filename, comments="#")
+
+    # In this file format:
+    # first N rows  -> cnorm matrix (N x N)
+    # last row      -> eigenvalues of scaled Hessian
+    nmode = data.shape[1]
+    cnorm = data[:nmode, :]
+    omega2_au = data[-1, :]
+
+    # Print frequencies in cm^-1
+    # Use signed sqrt so imaginary/negative modes stay visible if present.
+    omega_au = np.sign(omega2_au) * np.sqrt(np.abs(omega2_au))
+    omega_cm1 = omega_au * AU_TO_CM1
+
+    print("\nFrequencies (cm^-1)")
+    for i, w in enumerate(omega_cm1, 1):
+        print(f"{i:4d} {w:12.2f}")
+
+    return cnorm, omega2_au
 
 def write_output(traj, forces, md, step, time, mol, vel, frc, epot, ekin):
     """
@@ -69,6 +105,7 @@ def run_bomd():
     # -----------------------
     xyzfile = "geometry.xyz"
     velfile = "velocity.xyz"
+    cnormfile = "cnorm.dat"
 
     basis = "def2-TZVP"
     #basis = "def2-SVP"
@@ -79,6 +116,8 @@ def run_bomd():
     dt = dt_fs*FS2AU
     nsteps = 2500 
     conv_tol = 1e-10
+
+    NROTRASL = 5
 
     traj_file = "traj.xyz"
     force_file = "forces.dat"
@@ -129,6 +168,14 @@ def run_bomd():
             exit(1)
 
         return epot, np.asarray(grad)
+
+    # -----------------------
+    # AS preparation
+    #------------------------
+
+    cnorm, omega2 = read_cnorm("cnorm.dat")
+    omega2[-NROTRASL:] = 0.0
+ 
 
     # -----------------------
     # Output files
@@ -194,7 +241,16 @@ if __name__ == "__main__":
     print()
     #run_bomd()
     try:
-        run_bomd()
+        #run_bomd()
+        cnorm, omega2 = read_cnorm("cnorm.dat")
+
+        omega2[-5:] = 0.0
+
+        print("eigenvalues (a.u.):")
+        print(omega2)
+        print("cnorm (a.u.):")
+        print(cnorm)
+
     finally:
         elapsed = time.perf_counter() - t0
         print(f"\nTotal BOMD wall time: {elapsed:.2f} s", flush=True)
