@@ -326,22 +326,6 @@ def run_bomd():
     # AS preparation
     #------------------------
 
-    # --- cnorm reading and cleaning
-    cnorm, omega2 = read_cnorm(cnormfile)
-    omega2[-NROTRASL:] = 0.0
- 
-    H = read_flat_lower_hessian(hessfile)
-
-    # --- Harmonic dictionary 
-    harmonic = {
-        "H": H,
-        "cnorm": cnorm,
-        "omega2": omega2,
-        "masses_au": mass,
-    }
-
-    # --- OPTIONS
-
     if inp.switching_fun == "sine":
        switching = switching_sine
        print(f" Using sine switching function")
@@ -359,10 +343,16 @@ def run_bomd():
        print(f" Unsupported switching:\n I am not switching at all")
 
     if inp.harmonic_gen == "cnorm":
+       # --- cnorm reading and cleaning
+       cnorm, omega2 = read_cnorm(cnormfile)
+       omega2[-NROTRASL:] = 0.0
+       harmonic = {"cnorm": cnorm, "omega2": omega2}
        harmonic_force = harmonic_force_cnorm
        harmonic_energy = harmonic_energy_cnorm
        print(f" Using cnorm for harmonic job")
     if inp.harmonic_gen == "hessian":
+       H = read_flat_lower_hessian(hessfile)
+       harmonic = {"H": H}
        harmonic_force = harmonic_force_hessian
        harmonic_energy = harmonic_energy_hessian
        print(f" Using hessian for harmonic job")

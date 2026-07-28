@@ -1,7 +1,7 @@
 # --- INPUT FILES
 xyzfile = "geometry.xyz"
 velfile = "velocity.xyz"
-cnormfile = "cnorm.dat"
+cnormfile = "none"
 hessfile = "Hessian_flat.out"
 
 # --- OUTPUT FILES
