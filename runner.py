@@ -1,5 +1,6 @@
 import re
 import numpy as np
+import config as inp
 from pyscf import gto, scf, dft
 import time
 
@@ -12,6 +13,41 @@ FS2AU = 41.3413745758
 AU2FS = 1.0 / FS2AU
 CM1_TO_AU = 1.0 / 219474.6313705  # cm^-1 -> atomic units
 AU_TO_CM1 = 219474.6313705
+
+#----------------------------------------
+# INPUT READING FROM INPUT.PY
+#----------------------------------------
+# --- INPUT FILES
+xyzfile   = inp.xyzfile
+velfile   = inp.velfile
+cnormfile = inp.cnormfile
+hessfile  = inp.hessfile
+
+# --- OUTPUT FILES
+traj_file  = inp.traj_file
+force_file = inp.force_file
+md_file    = inp.md_file
+final_geo  = inp.final_geo
+final_vel  = inp.final_vel
+
+# --- LEVEL OF THEORY
+functional = inp.functional
+dispersion = inp.dispersion
+basis      = inp.basis
+charge     = inp.charge
+spin       = inp.spin
+conv_tol   = inp.conv_tol
+backend    = inp.backend
+
+# --- DYNAMICS PARAMETERS
+dt_fs           = inp.dt_fs
+nsteps          = inp.nsteps
+switching_steps = inp.switching_steps
+NROTRASL        = inp.NROTRASL
+
+# --- SWITCHING OPTIONS
+switching_fun   = inp.switching_fun
+harmonic_gen    = inp.harmonic_gen
 
 def read_flat_lower_hessian(filename):
     vals = []
@@ -216,31 +252,29 @@ def write_output(traj, forces, md, step, time, mol, vel, frc, epot, ekin):
     forces.flush()
     md.flush()
 
+def write_final_files(final_geo, final_vel, mol, vel):
+    natm = mol.natm
+    symbols = [mol.atom_symbol(i) for i in range(natm)]
+    coords = mol.atom_coords(unit="Ang")
+
+    with open(final_geo, "w") as fg:
+        fg.write(f"{natm}\n")
+        fg.write("Final geometry\n")
+        for sym, r in zip(symbols, coords):
+            fg.write(f"{sym:2s} {r[0]:16.10f} {r[1]:16.10f} {r[2]:16.10f}\n")
+
+    with open(final_vel, "w") as fv:
+        fv.write(f"{natm}\n")
+        fv.write("Final velocities (a.u.)\n")
+        for sym, v in zip(symbols, vel):
+            fv.write(f"{sym:2s} {v[0]:16.10e} {v[1]:16.10e} {v[2]:16.10e}\n")
+
 def run_bomd():
     # -----------------------
     # Input
     # -----------------------
-    xyzfile = "geometry.xyz"
-    velfile = "velocity.xyz"
-    cnormfile = "cnorm.dat"
-    hessfile = "Hessian_flat.out"
-
-    basis = "def2-TZVP"
-    #basis = "def2-SVP"
-    charge = 0
-    spin = 0
-
-    dt_fs = 0.2
     dt = dt_fs*FS2AU
-    nsteps = 2500 
-    switching_steps = nsteps 
-    conv_tol = 1e-10
 
-    NROTRASL = 5
-
-    traj_file = "traj.xyz"
-    force_file = "forces.dat"
-    md_file = "md.log"
 
     # -----------------------
     # Molecule
@@ -269,13 +303,12 @@ def run_bomd():
     # -----------------------
     if spin == 0:
         mf = dft.RKS(mol).density_fit()
-        mf.xc = "b3lyp"
-        mf.disp = "d4"
+        mf.xc = functional 
+        mf.disp = dispersion
     else:
         mf = scf.UHF(mol).density_fit()
 
     mf.conv_tol = conv_tol
-    backend='pyscf'
     scanner = mf.nuc_grad_method().as_scanner()
 
     def compute_energy_gradient():
@@ -299,24 +332,44 @@ def run_bomd():
  
     H = read_flat_lower_hessian(hessfile)
 
-    # --- Switching function 
-    #switching = switching_harmonic
-    #switching = switching_none
-    switching = switching_sine
-    #switching = switching_linear
-    #switching = switching_smoothstep
-
-    # --- Harmonic function selection
+    # --- Harmonic dictionary 
     harmonic = {
         "H": H,
         "cnorm": cnorm,
         "omega2": omega2,
         "masses_au": mass,
     }
-    harmonic_force = harmonic_force_cnorm
-    #harmonic_force = harmonic_force_hessian
-    harmonic_energy = harmonic_energy_cnorm
-    #harmonic_energy = harmonic_energy_hessian
+
+    # --- OPTIONS
+
+    if inp.switching_fun == "sine":
+       switching = switching_sine
+       print(f" Using sine switching function")
+    elif inp.switching_fun == "none":
+       switching = switching_none
+       print(f" Using no switching function")
+    elif inp.switching_fun == "linear":
+       switching = switching_linear
+       print(f" Using linear switching function")
+    elif inp.switching_fun == "smooth":
+       switching = switching_smoothstep
+       print(f" Using smoothstep switching function")
+    else:
+       switching = switching_none
+       print(f" Unsupported switching:\n I am not switching at all")
+
+    if inp.harmonic_gen == "cnorm":
+       harmonic_force = harmonic_force_cnorm
+       harmonic_energy = harmonic_energy_cnorm
+       print(f" Using cnorm for harmonic job")
+    if inp.harmonic_gen == "hessian":
+       harmonic_force = harmonic_force_hessian
+       harmonic_energy = harmonic_energy_hessian
+       print(f" Using hessian for harmonic job")
+    else:
+       harmonic_force = harmonic_force_hessian
+       harmonic_energy = harmonic_energy_hessian
+       print(f" Unsupported harmonic force:\n I am using the Hessian ")
 
     # -----------------------
     # Output files
@@ -369,6 +422,8 @@ def run_bomd():
             epot = (1.0 -lam)*eharm + lam*(e_real-E0)
 
             write_output(traj, forces, md, step, time, mol, vel, frc, epot, ekin)
+
+    write_final_files(final_geo, final_vel, mol, vel)
 
 if __name__ == "__main__":
 
