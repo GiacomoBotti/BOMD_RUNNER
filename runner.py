@@ -1,6 +1,6 @@
 import re
 import numpy as np
-#from pyscf import gto, scf, dft
+from pyscf import gto, scf, dft
 import time
 
 t0 = time.perf_counter()
@@ -13,6 +13,26 @@ AU2FS = 1.0 / FS2AU
 CM1_TO_AU = 1.0 / 219474.6313705  # cm^-1 -> atomic units
 AU_TO_CM1 = 219474.6313705
 
+def read_flat_lower_hessian(filename):
+    vals = []
+    with open(filename, "r") as f:
+        for line in f:
+            s = line.strip()
+            if not s:
+                continue
+            vals.append(float(s.replace("D", "E")))
+
+    vals = np.asarray(vals, dtype=float)
+
+    n = int((np.sqrt(8 * len(vals) + 1) - 1) / 2)
+    if n * (n + 1) // 2 != len(vals):
+        raise ValueError("File length is not a valid lower-triangular matrix.")
+
+    H = np.zeros((n, n), dtype=float)
+    tril = np.tril_indices(n)
+    H[tril] = vals
+    H = H + np.tril(H, -1).T
+    return H
 
 def read_cnorm(filename):
     """
@@ -45,6 +65,97 @@ def read_cnorm(filename):
         print(f"{i:4d} {w:12.2f}")
 
     return cnorm, omega2_au
+
+
+def harmonic_energy_cnorm(coords, coords0, harmonic):
+    """
+    Harmonic energy from normal modes.
+
+    coords, coords0 : (natm, 3) in Bohr
+    masses_au       : (natm,) or (natm,1) in electron masses
+    cnorm           : normal-mode matrix
+    omega2          : squared frequencies in a.u.
+    """
+    cnorm = harmonic["cnorm"]
+    omega2 = harmonic["omega2"]
+    masses_au = harmonic["masses_au"]
+
+    dx = (np.asarray(coords, dtype=float) - np.asarray(coords0, dtype=float)).ravel()
+
+    masses_au = np.asarray(masses_au, dtype=float).reshape(-1)
+    sqrtm = np.repeat(np.sqrt(masses_au), 3)
+
+    dx_mw = sqrtm * dx
+    q = cnorm @ dx_mw
+
+    return 0.5 * np.sum(omega2 * q * q)
+
+def harmonic_force_cnorm(coords, coords0, harmonic):
+    """
+    coords, coords0 : (natm, 3) in Bohr
+    masses_au       : (natm,) or (natm,1)
+    cnorm           : full normal-mode matrix
+    omega2          : squared frequencies in a.u., last NROTRASL entries already zero
+    """
+
+    cnorm = harmonic["cnorm"]
+    omega2 = harmonic["omega2"]
+    masses_au = harmonic["masses_au"]
+
+    coords = np.asarray(coords, dtype=float)
+    coords0 = np.asarray(coords0, dtype=float)
+    masses_au = np.asarray(masses_au, dtype=float).reshape(-1)
+
+    x = (coords - coords0).ravel()
+    sqrtm = np.repeat(np.sqrt(masses_au), 3)
+    xmw = sqrtm * x
+
+    # Try this convention first:
+    q = cnorm @ xmw
+    fq = -omega2 * q
+    fmw = cnorm.T @ fq
+    f = (sqrtm * fmw).reshape(coords.shape)
+
+    return f
+
+def harmonic_energy_hessian(coords, coords0, harmonic):
+    """
+    Harmonic energy from the Cartesian Hessian.
+
+    coords, coords0 : (natm, 3) in Bohr
+    hessian         : (3N, 3N) Cartesian Hessian in Hartree/Bohr^2
+    """
+    H = harmonic["H"]
+ 
+    dx = (np.asarray(coords, dtype=float) - np.asarray(coords0, dtype=float)).ravel()
+    return 0.5 * dx @ hessian @ dx
+
+def harmonic_force_hessian(coords, coords0, harmonic):
+    """
+    coords, coords0 : (natm, 3) in Bohr
+    Hcart           : (3N, 3N) Cartesian Hessian in Hartree/Bohr^2
+    """
+ 
+    H = harmonic["H"]
+ 
+    coords = np.asarray(coords, dtype=float)
+    coords0 = np.asarray(coords0, dtype=float)
+
+    dx      = (coords - coords0).ravel()
+    F_cart    = (-H @ dx).reshape(coords.shape)
+
+    return F_cart
+
+def switching_linear(step, nsteps):
+    return step / nsteps
+
+def switching_sine(t, T):
+    x = t / T
+    return x - np.sin(2.0 * np.pi * x) / (2.0 * np.pi)
+
+def switching_smoothstep(t, T):
+    x = t / T
+    return 10.0*x**3 - 15.0*x**4 + 6.0*x**5 
 
 def write_output(traj, forces, md, step, time, mol, vel, frc, epot, ekin):
     """
@@ -106,6 +217,7 @@ def run_bomd():
     xyzfile = "geometry.xyz"
     velfile = "velocity.xyz"
     cnormfile = "cnorm.dat"
+    hessfile = "Hessian_flat.out"
 
     basis = "def2-TZVP"
     #basis = "def2-SVP"
@@ -115,6 +227,7 @@ def run_bomd():
     dt_fs = 0.2
     dt = dt_fs*FS2AU
     nsteps = 2500 
+    switching_steps = 2500
     conv_tol = 1e-10
 
     NROTRASL = 5
@@ -135,6 +248,7 @@ def run_bomd():
     mol.build()
 
     coords = mol.atom_coords()  # Bohr
+    coords0 = coords # Equilibrium geometry
     vel = np.loadtxt(velfile, skiprows=2, usecols=(1, 2, 3))
 
     if vel.shape != coords.shape:
@@ -173,9 +287,26 @@ def run_bomd():
     # AS preparation
     #------------------------
 
-    cnorm, omega2 = read_cnorm("cnorm.dat")
-    omega2[-NROTRASL:] = 0.0
+    # --- cnorm reading and cleaning
+    cnorm, omega2 = read_cnorm(cnormfile)
+    #omega2[-NROTRASL:] = 0.0
  
+    H = read_flat_lower_hessian(hessfile)
+
+    # --- Switching function 
+    #switching = switching_sine
+    #switching = switching_linear
+    switching = switching_smoothstep
+
+    # --- Harmonic function selection
+    harmonic = {
+        "H": H,
+        "cnorm": cnorm,
+        "omega2": omega2,
+        "masses_au": mass,
+    }
+    harmonic_force = harmonic_force_cnorm
+    #harmonic_force = harmonic_force_hessian
 
     # -----------------------
     # Output files
@@ -199,13 +330,19 @@ def run_bomd():
         # Velocity Verlet
         # -----------------------
         for step in range(1, nsteps + 1):
+            
+            lam = switching(step, switching_steps) 
+            print(f"{step:6d}  {lam:12.8f}", flush=True)
             acc = frc / mass
 
             coords = coords + vel * dt + 0.5 * acc * dt**2
             mol.set_geom_(coords, unit="Bohr")
 
             epot, grad = compute_energy_gradient()
-            frc_new = -np.asarray(grad)
+            f_real = -np.asarray(grad)
+ 
+            f_harm = harmonic_force(coords, coords0, harmonic)
+            frc_new = (1.0 - lam) * f_harm + lam * f_real 
 
             acc_new = frc_new / mass
             vel = vel + 0.5 * (acc + acc_new) * dt
@@ -236,20 +373,12 @@ if __name__ == "__main__":
           A PySCF-based trajectory integrator 
               compatible with DragonBall
     """)
-    print("Version 0.1")
-    print("G. Botti")
+    print("   Version 0.1")
+    print("   G. Botti")
     print()
     #run_bomd()
     try:
-        #run_bomd()
-        cnorm, omega2 = read_cnorm("cnorm.dat")
-
-        omega2[-5:] = 0.0
-
-        print("eigenvalues (a.u.):")
-        print(omega2)
-        print("cnorm (a.u.):")
-        print(cnorm)
+        run_bomd()
 
     finally:
         elapsed = time.perf_counter() - t0
