@@ -128,7 +128,7 @@ def harmonic_energy_hessian(coords, coords0, harmonic):
     H = harmonic["H"]
  
     dx = (np.asarray(coords, dtype=float) - np.asarray(coords0, dtype=float)).ravel()
-    return 0.5 * dx @ hessian @ dx
+    return 0.5 * dx @ H @ dx
 
 def harmonic_force_hessian(coords, coords0, harmonic):
     """
@@ -145,6 +145,12 @@ def harmonic_force_hessian(coords, coords0, harmonic):
     F_cart    = (-H @ dx).reshape(coords.shape)
 
     return F_cart
+
+def switching_harmonic(step, nsteps):
+    return 0.0
+
+def switching_none(step, nsteps):
+    return 1.0
 
 def switching_linear(step, nsteps):
     return step / nsteps
@@ -201,9 +207,9 @@ def write_output(traj, forces, md, step, time, mol, vel, frc, epot, ekin):
     md.write(
         f"{step:8d}"
         f"{time:16.8f}"
-        f"{epot:20.12f}"
-        f"{ekin:20.12f}"
-        f"{epot + ekin:20.12f}\n"
+        f"{epot*AU_TO_CM1:20.12f}"
+        f"{ekin*AU_TO_CM1:20.12f}"
+        f"{(epot + ekin)*AU_TO_CM1:20.12f}\n"
     )
 
     traj.flush()
@@ -227,7 +233,7 @@ def run_bomd():
     dt_fs = 0.2
     dt = dt_fs*FS2AU
     nsteps = 2500 
-    switching_steps = 2500
+    switching_steps = nsteps 
     conv_tol = 1e-10
 
     NROTRASL = 5
@@ -289,14 +295,16 @@ def run_bomd():
 
     # --- cnorm reading and cleaning
     cnorm, omega2 = read_cnorm(cnormfile)
-    #omega2[-NROTRASL:] = 0.0
+    omega2[-NROTRASL:] = 0.0
  
     H = read_flat_lower_hessian(hessfile)
 
     # --- Switching function 
-    #switching = switching_sine
+    #switching = switching_harmonic
+    #switching = switching_none
+    switching = switching_sine
     #switching = switching_linear
-    switching = switching_smoothstep
+    #switching = switching_smoothstep
 
     # --- Harmonic function selection
     harmonic = {
@@ -307,6 +315,8 @@ def run_bomd():
     }
     harmonic_force = harmonic_force_cnorm
     #harmonic_force = harmonic_force_hessian
+    harmonic_energy = harmonic_energy_cnorm
+    #harmonic_energy = harmonic_energy_hessian
 
     # -----------------------
     # Output files
@@ -318,11 +328,16 @@ def run_bomd():
         # -----------------------
         # Initial energy and force
         # -----------------------
-        epot, grad = compute_energy_gradient()
+        e_real, grad = compute_energy_gradient()
         frc = -np.asarray(grad)
         ekin = 0.5 * np.sum(mass * vel**2)
         time = 0.0
         step = 0
+        lam = switching(step, switching_steps) 
+        # --- if lam = 1, it does not scale the energy
+        E0 = e_real*(1-lam)
+        eharm = harmonic_energy(coords, coords0, harmonic)
+        epot = (1.0 -lam)*eharm + lam*(e_real-E0)
 
         write_output(traj, forces, md, step, time, mol, vel, frc, epot, ekin)
 
@@ -338,7 +353,7 @@ def run_bomd():
             coords = coords + vel * dt + 0.5 * acc * dt**2
             mol.set_geom_(coords, unit="Bohr")
 
-            epot, grad = compute_energy_gradient()
+            e_real, grad = compute_energy_gradient()
             f_real = -np.asarray(grad)
  
             f_harm = harmonic_force(coords, coords0, harmonic)
@@ -350,6 +365,8 @@ def run_bomd():
             frc = frc_new
             time = step * dt
             ekin = 0.5 * np.sum(mass * vel**2)
+            eharm = harmonic_energy(coords, coords0, harmonic)
+            epot = (1.0 -lam)*eharm + lam*(e_real-E0)
 
             write_output(traj, forces, md, step, time, mol, vel, frc, epot, ekin)
 
