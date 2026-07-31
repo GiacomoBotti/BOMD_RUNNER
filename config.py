@@ -1,6 +1,8 @@
 # --- INPUT FILES
 xyzfile = "geometry.xyz"
 velfile = "velocity.xyz"
+#xyzfile = "final_geo.xyz"
+#velfile = "final_vel.xyz"
 cnormfile = "none"
 hessfile = "Hessian_flat.out"
 
@@ -8,8 +10,8 @@ hessfile = "Hessian_flat.out"
 traj_file = "traj.xyz"
 force_file = "forces.dat"
 md_file = "md.log"
-final_geo = "final_geo.xyz"
-final_vel = "final_vel.xyz"
+final_geo = "final_geo_bomd.xyz"
+final_vel = "final_vel_bomd.xyz"
 
 # --- LEVEL OF THEORY
 functional='b3lyp'
@@ -28,6 +30,6 @@ switching_steps = nsteps
 NROTRASL = 5 
 
 # --- SWITCHING OPTIONS 
-switching_fun = "sine"
+switching_fun = "none"
 harmonic_gen = "hessian"
 

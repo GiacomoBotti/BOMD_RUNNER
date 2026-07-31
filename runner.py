@@ -243,9 +243,10 @@ def write_output(traj, forces, md, step, time, mol, vel, frc, epot, ekin):
     md.write(
         f"{step:8d}"
         f"{time:16.8f}"
-        f"{epot*AU_TO_CM1:20.12f}"
-        f"{ekin*AU_TO_CM1:20.12f}"
-        f"{(epot + ekin)*AU_TO_CM1:20.12f}\n"
+        f"{epot:20.12e}"
+        f"{ekin:20.12e}"
+        f"{(epot + ekin):20.12e}"
+        f"{(epot + ekin)*AU_TO_CM1:20.12e}\n"
     )
 
     traj.flush()
@@ -366,7 +367,7 @@ def run_bomd():
     # -----------------------
     with open(traj_file, "w") as traj, open(force_file, "w") as forces, open(md_file, "w") as md:
 
-        md.write(f"{'Step':>8s}{'Time':>16s}{'Epot':>20s}{'Ekin':>20s}{'Etot':>20s}\n")
+        md.write(f"{'Step':>8s}{'Time':>16s}{'Epot (au)':>20s}{'Ekin (au)':>20s}{'Etot (au)':>20s}{'Etot (cm-1)':>20s}\n")
 
         # -----------------------
         # Initial energy and force
@@ -377,8 +378,8 @@ def run_bomd():
         time = 0.0
         step = 0
         lam = switching(step, switching_steps) 
-        # --- if lam = 1, it does not scale the energy
-        E0 = e_real*(1-lam)
+        # --- it always scale the energy
+        E0 = e_real
         eharm = harmonic_energy(coords, coords0, harmonic)
         epot = (1.0 -lam)*eharm + lam*(e_real-E0)
 
