@@ -305,7 +305,8 @@ def run_bomd():
     if spin == 0:
         mf = dft.RKS(mol).density_fit()
         mf.xc = functional 
-        mf.disp = dispersion
+        if dispersion != "none"
+            mf.disp = dispersion
     else:
         mf = scf.UHF(mol).density_fit()
 

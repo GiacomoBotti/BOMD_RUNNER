@@ -15,7 +15,7 @@ final_vel = "final_vel_bomd.xyz"
 
 # --- LEVEL OF THEORY
 functional='b3lyp'
-dispersion='d4'
+dispersion='none'
 basis = "def2-TZVP"
 charge = 0 
 spin = 0 
