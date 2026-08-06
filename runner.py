@@ -303,14 +303,15 @@ def run_bomd():
     # Electronic structure
     # -----------------------
     if spin == 0:
-        mf = dft.RKS(mol).density_fit()
-        mf.xc = functional 
-        if dispersion != "none"
-            mf.disp = dispersion
+       mf = dft.RKS(mol).density_fit()
     else:
-        mf = scf.UHF(mol).density_fit()
+       mf = dft.UKS(mol).density_fit()
 
+    mf.xc = functional
+    if dispersion != "none":
+        mf.disp = dispersion
     mf.conv_tol = conv_tol
+
     scanner = mf.nuc_grad_method().as_scanner()
 
     def compute_energy_gradient():
@@ -348,11 +349,11 @@ def run_bomd():
        # --- cnorm reading and cleaning
        cnorm, omega2 = read_cnorm(cnormfile)
        omega2[-NROTRASL:] = 0.0
-       harmonic = {"cnorm": cnorm, "omega2": omega2}
+       harmonic = {"cnorm": cnorm, "omega2": omega2, "masses_au": mass}
        harmonic_force = harmonic_force_cnorm
        harmonic_energy = harmonic_energy_cnorm
        print(f" Using cnorm for harmonic job")
-    if inp.harmonic_gen == "hessian":
+    elif inp.harmonic_gen == "hessian":
        H = read_flat_lower_hessian(hessfile)
        harmonic = {"H": H}
        harmonic_force = harmonic_force_hessian
