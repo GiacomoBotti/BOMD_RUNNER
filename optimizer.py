@@ -22,11 +22,18 @@ AU_TO_CM1 = 219474.6313705
 # --- INPUT FILES
 xyzguess = inp.xyzguess
 
-# --- OPTIMIZATION PARAMETERS
-gradientmax = inp.opt_gradientmax
-gradientrms = inp.opt_gradientrms
-stepmax = inp.opt_stepmax
-steprms = inp.opt_steprms
+# --- BERNY OPTIMIZATION PARAMETERS
+#gradientmax = inp.opt_gradientmax
+#gradientrms = inp.opt_gradientrms
+#stepmax = inp.opt_stepmax
+#steprms = inp.opt_steprms
+
+# --- geomeTRIC OPTIMIZATION PARAMETERS
+opt_energy = inp.opt_energy 
+opt_grms = inp.opt_grms
+opt_gmax = inp.opt_gmax
+opt_drms = inp.opt_drms
+opt_dmax = inp.opt_dmax
 
 # --- OUTPUT FILES
 xyzfile   = inp.xyzfile
@@ -87,22 +94,38 @@ def run_optfreq():
         mf.disp = dispersion
 
     mf.conv_tol = conv_tol
-    conv_params = {  # These are the default settings
-        'gradientmax': gradientmax,  # Eh/[Bohr|rad]
-        'gradientrms': gradientrms,  # Eh/[Bohr|rad]
-        'stepmax': stepmax,       # [Bohr|rad]
-        'steprms': steprms,       # [Bohr|rad]
-    }
+
+    # ------------------------------
+    # Optimization with Berny (BAD)
+    # ------------------------------
+    #conv_params = {  # These are the default settings
+    #    'gradientmax': gradientmax,  # Eh/[Bohr|rad]
+    #    'gradientrms': gradientrms,  # Eh/[Bohr|rad]
+    #    'stepmax': stepmax,       # [Bohr|rad]
+    #    'steprms': steprms,       # [Bohr|rad]
+    #}
  
-    # -----------------------
-    # Optimization 
-    # -----------------------
-    mol = mf.Gradients().optimizer(solver='berny').kernel(conv_params)
+    #mol = mf.Gradients().optimizer(solver='berny').kernel(conv_params)
+
+    # ------------------------------
+    # Optimization with geomeTRIC 
+    # ------------------------------
+
+    conv_params = {
+    "convergence_energy": opt_energy,
+    "convergence_grms": opt_grms,
+    "convergence_gmax": opt_gmax,
+    "convergence_drms": opt_drms,
+    "convergence_dmax": opt_dmax,
+    }
+
+    mol = mf.Gradients().optimizer(solver="geomeTRIC").kernel(conv_params)
     write_optgeo(xyzfile,mol)
 
     # -----------------------
     # Frequencies 
     # -----------------------
+    mf.mol = mol
     hess = mf.Hessian().kernel()
     freq_res = thermo.harmonic_analysis(mol, hess)
 
