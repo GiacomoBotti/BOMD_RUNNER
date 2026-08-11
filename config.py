@@ -38,10 +38,13 @@ opt_dmax = 1.8e-3
 dt_fs = 0.2 
 nsteps = 2500 
 switching_steps = nsteps 
-
 NROTRASL = 5 
 
 # --- SWITCHING OPTIONS 
 switching_fun = "smooth"
 harmonic_gen = "hessian"
+
+# HESSIANATOR INPUT
+geomfile = "geom_test_hessian.xyz"
+hessfile = "hdb.out"
 

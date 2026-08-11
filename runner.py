@@ -18,6 +18,7 @@ AU_TO_CM1 = 219474.6313705
 # INPUT READING FROM INPUT.PY
 #----------------------------------------
 # --- INPUT FILES
+eqxyz     = inp.eqxyz
 xyzfile   = inp.xyzfile
 velfile   = inp.velfile
 cnormfile = inp.cnormfile
@@ -281,7 +282,8 @@ def run_bomd():
     # Molecule
     # -----------------------
     mol = gto.Mole()
-    mol.atom = xyzfile
+    #mol.atom = xyzfile
+    mol.atom = eqxyz #equilibrium geometry
     mol.unit = "Angstrom"
     mol.basis = basis
     mol.charge = charge
@@ -365,8 +367,15 @@ def run_bomd():
        print(f" Unsupported harmonic force:\n I am using the Hessian ")
 
     # -----------------------
+    # Equilibrium energy
+    # -----------------------
+
+    E0, grad = compute_energy_gradient()
+
+    # -----------------------
     # Output files
     # -----------------------
+
     with open(traj_file, "w") as traj, open(force_file, "w") as forces, open(md_file, "w") as md:
 
         md.write(f"{'Step':>8s}{'Time':>16s}{'Epot (au)':>20s}{'Ekin (au)':>20s}{'Etot (au)':>20s}{'Etot (cm-1)':>20s}\n")
@@ -374,16 +383,18 @@ def run_bomd():
         # -----------------------
         # Initial energy and force
         # -----------------------
+        mol.set_geom_(xyzfile, unit="Ang")
         e_real, grad = compute_energy_gradient()
-        frc = -np.asarray(grad)
+        f_real = -np.asarray(grad)
         ekin = 0.5 * np.sum(mass * vel**2)
         time = 0.0
         step = 0
         lam = switching(step, switching_steps) 
         # --- it always scale the energy
-        E0 = e_real
+        f_harm = harmonic_force(coords, coords0, harmonic)
+        frc = (1.0 - lam) * f_harm + lam * f_real
         eharm = harmonic_energy(coords, coords0, harmonic)
-        epot = (1.0 -lam)*eharm + lam*(e_real-E0)
+        epot = (1.0 -lam)*eharm + lam*(e_real -E0)
 
         write_output(traj, forces, md, step, time, mol, vel, frc, epot, ekin)
 
