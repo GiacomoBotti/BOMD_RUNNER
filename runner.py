@@ -384,19 +384,27 @@ def run_bomd():
         # Initial energy and force
         # -----------------------
         mol.set_geom_(xyzfile, unit="Ang")
+        coords = mol.atom_coords(unit="Bohr").copy()
         e_real, grad = compute_energy_gradient()
         f_real = -np.asarray(grad)
         ekin = 0.5 * np.sum(mass * vel**2)
         time = 0.0
         step = 0
+        # --- it always scales the energy
         lam = switching(step, switching_steps) 
-        # --- it always scale the energy
         f_harm = harmonic_force(coords, coords0, harmonic)
         frc = (1.0 - lam) * f_harm + lam * f_real
         eharm = harmonic_energy(coords, coords0, harmonic)
         epot = (1.0 -lam)*eharm + lam*(e_real -E0)
 
         write_output(traj, forces, md, step, time, mol, vel, frc, epot, ekin)
+
+        # DEBUG
+        #print(f"step {step}")
+        #print(f"  E0      = {E0:.15e}")
+        #print(f"  e_real  = {e_real:.15e}")
+        #print(f"  epot    = {epot:.15e}")
+        #print(f"  |coord| = {np.linalg.norm(coords):.15e}")
 
         # -----------------------
         # Velocity Verlet
@@ -426,6 +434,13 @@ def run_bomd():
             epot = (1.0 -lam)*eharm + lam*(e_real-E0)
 
             write_output(traj, forces, md, step, time, mol, vel, frc, epot, ekin)
+            
+            # DEBUG 
+            #print(f"step {step}")
+            #print(f"  E0      = {E0:.15e}")
+            #print(f"  e_real  = {e_real:.15e}")
+            #print(f"  epot    = {epot:.15e}")
+            #print(f"  |coord| = {np.linalg.norm(coords):.15e}")
 
     write_final_files(final_geo, final_vel, mol, vel)
 
