@@ -11,7 +11,7 @@ t0 = time.perf_counter()
 # INPUT FROM config.py
 # ------------------------
 geomfile   = inp.geomfile      # trajectory-like XYZ file
-hessfile   = inp.hessfile      # output Hessian file
+hessfile   = inp.hdbfile      # output Hessian file
 functional = inp.functional
 dispersion = inp.dispersion
 basis      = inp.basis
