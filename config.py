@@ -1,7 +1,8 @@
 # --- INPUT FILES
-xyzguess = "guess.xyz" 				# Optimizer initial velocity
+xyzguess = "guess.xyz" 				# Optimizer guess geometry
 xyzfile = "geometry.xyz" 			# Optimizer output/ runner input geometry
 velfile = "velocity.xyz"			# Initial velocity
+eqxyz = "geometry.xyz"     # Equilibrium geometry
 cnormfile = "none"				# Hessian eigenproblem file
 hessfile = "Hessian_flat.out"			# Hessian file
 
