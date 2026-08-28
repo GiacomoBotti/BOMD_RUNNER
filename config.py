@@ -38,7 +38,7 @@ opt_dmax = 1.8e-3
 dt_fs = 0.2 					# Time step size in fs
 nsteps = 2500 					# Number of steps
 switching_steps = nsteps 			# Number of switching steps
-NROTRASL = 5 					# Number of rototraslational modes (5 for linear)
+NROTRANSL = 5 					# Number of rototranslational modes (5 for linear)
 
 # --- SWITCHING OPTIONS 
 switching_fun = "smooth"			# Switching fun: none (classical) sine or smooth

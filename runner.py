@@ -44,7 +44,7 @@ backend    = inp.backend
 dt_fs           = inp.dt_fs
 nsteps          = inp.nsteps
 switching_steps = inp.switching_steps
-NROTRASL        = inp.NROTRASL
+NROTRANSL        = inp.NROTRANSL
 
 # --- SWITCHING OPTIONS
 switching_fun   = inp.switching_fun
