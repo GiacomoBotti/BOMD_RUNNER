@@ -22,12 +22,6 @@ spin = 0
 conv_tol = 1e-10				# Convergence for SCF
 backend='pyscf'					# Backend for trajectory energy/ gradient
 
-# --- OPTIMIZATION PARAMETERS (BERNY)           # LEGACY
-opt_gradientmax = 0.45e-3                       # not used anymore
-opt_gradientrms = 0.15e-3
-opt_stepmax = 1.8e-3
-opt_steprms = 1.2e-3
-
 # --- OPTIMIZATION PARAMETERS (geomeTRIC)	
 opt_energy = 1e-6
 opt_grms = 3e-4
