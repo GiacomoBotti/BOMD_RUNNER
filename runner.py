@@ -18,6 +18,7 @@ AU_TO_CM1 = 219474.6313705
 # INPUT READING FROM INPUT.PY
 #----------------------------------------
 # --- INPUT FILES
+eqxyz     = inp.eqxyz
 xyzfile   = inp.xyzfile
 velfile   = inp.velfile
 cnormfile = inp.cnormfile
@@ -43,7 +44,7 @@ backend    = inp.backend
 dt_fs           = inp.dt_fs
 nsteps          = inp.nsteps
 switching_steps = inp.switching_steps
-NROTRASL        = inp.NROTRASL
+NROTRANSL        = inp.NROTRANSL
 
 # --- SWITCHING OPTIONS
 switching_fun   = inp.switching_fun
@@ -243,9 +244,10 @@ def write_output(traj, forces, md, step, time, mol, vel, frc, epot, ekin):
     md.write(
         f"{step:8d}"
         f"{time:16.8f}"
-        f"{epot*AU_TO_CM1:20.12f}"
-        f"{ekin*AU_TO_CM1:20.12f}"
-        f"{(epot + ekin)*AU_TO_CM1:20.12f}\n"
+        f"{epot:20.12e}"
+        f"{ekin:20.12e}"
+        f"{(epot + ekin):20.12e}"
+        f"{(epot + ekin)*AU_TO_CM1:20.12e}\n"
     )
 
     traj.flush()
@@ -280,7 +282,8 @@ def run_bomd():
     # Molecule
     # -----------------------
     mol = gto.Mole()
-    mol.atom = xyzfile
+    #mol.atom = xyzfile
+    mol.atom = eqxyz #equilibrium geometry
     mol.unit = "Angstrom"
     mol.basis = basis
     mol.charge = charge
@@ -302,13 +305,15 @@ def run_bomd():
     # Electronic structure
     # -----------------------
     if spin == 0:
-        mf = dft.RKS(mol).density_fit()
-        mf.xc = functional 
-        mf.disp = dispersion
+       mf = dft.RKS(mol).density_fit()
     else:
-        mf = scf.UHF(mol).density_fit()
+       mf = dft.UKS(mol).density_fit()
 
+    mf.xc = functional
+    if dispersion != "none":
+        mf.disp = dispersion
     mf.conv_tol = conv_tol
+
     scanner = mf.nuc_grad_method().as_scanner()
 
     def compute_energy_gradient():
@@ -325,22 +330,6 @@ def run_bomd():
     # -----------------------
     # AS preparation
     #------------------------
-
-    # --- cnorm reading and cleaning
-    cnorm, omega2 = read_cnorm(cnormfile)
-    omega2[-NROTRASL:] = 0.0
- 
-    H = read_flat_lower_hessian(hessfile)
-
-    # --- Harmonic dictionary 
-    harmonic = {
-        "H": H,
-        "cnorm": cnorm,
-        "omega2": omega2,
-        "masses_au": mass,
-    }
-
-    # --- OPTIONS
 
     if inp.switching_fun == "sine":
        switching = switching_sine
@@ -359,10 +348,16 @@ def run_bomd():
        print(f" Unsupported switching:\n I am not switching at all")
 
     if inp.harmonic_gen == "cnorm":
+       # --- cnorm reading and cleaning
+       cnorm, omega2 = read_cnorm(cnormfile)
+       omega2[-NROTRASL:] = 0.0
+       harmonic = {"cnorm": cnorm, "omega2": omega2, "masses_au": mass}
        harmonic_force = harmonic_force_cnorm
        harmonic_energy = harmonic_energy_cnorm
        print(f" Using cnorm for harmonic job")
-    if inp.harmonic_gen == "hessian":
+    elif inp.harmonic_gen == "hessian":
+       H = read_flat_lower_hessian(hessfile)
+       harmonic = {"H": H}
        harmonic_force = harmonic_force_hessian
        harmonic_energy = harmonic_energy_hessian
        print(f" Using hessian for harmonic job")
@@ -372,27 +367,44 @@ def run_bomd():
        print(f" Unsupported harmonic force:\n I am using the Hessian ")
 
     # -----------------------
+    # Equilibrium energy
+    # -----------------------
+
+    E0, grad = compute_energy_gradient()
+
+    # -----------------------
     # Output files
     # -----------------------
+
     with open(traj_file, "w") as traj, open(force_file, "w") as forces, open(md_file, "w") as md:
 
-        md.write(f"{'Step':>8s}{'Time':>16s}{'Epot':>20s}{'Ekin':>20s}{'Etot':>20s}\n")
+        md.write(f"{'Step':>8s}{'Time':>16s}{'Epot (au)':>20s}{'Ekin (au)':>20s}{'Etot (au)':>20s}{'Etot (cm-1)':>20s}\n")
 
         # -----------------------
         # Initial energy and force
         # -----------------------
+        mol.set_geom_(xyzfile, unit="Ang")
+        coords = mol.atom_coords(unit="Bohr").copy()
         e_real, grad = compute_energy_gradient()
-        frc = -np.asarray(grad)
+        f_real = -np.asarray(grad)
         ekin = 0.5 * np.sum(mass * vel**2)
         time = 0.0
         step = 0
+        # --- it always scales the energy
         lam = switching(step, switching_steps) 
-        # --- if lam = 1, it does not scale the energy
-        E0 = e_real*(1-lam)
+        f_harm = harmonic_force(coords, coords0, harmonic)
+        frc = (1.0 - lam) * f_harm + lam * f_real
         eharm = harmonic_energy(coords, coords0, harmonic)
-        epot = (1.0 -lam)*eharm + lam*(e_real-E0)
+        epot = (1.0 -lam)*eharm + lam*(e_real -E0)
 
         write_output(traj, forces, md, step, time, mol, vel, frc, epot, ekin)
+
+        # DEBUG
+        #print(f"step {step}")
+        #print(f"  E0      = {E0:.15e}")
+        #print(f"  e_real  = {e_real:.15e}")
+        #print(f"  epot    = {epot:.15e}")
+        #print(f"  |coord| = {np.linalg.norm(coords):.15e}")
 
         # -----------------------
         # Velocity Verlet
@@ -422,6 +434,13 @@ def run_bomd():
             epot = (1.0 -lam)*eharm + lam*(e_real-E0)
 
             write_output(traj, forces, md, step, time, mol, vel, frc, epot, ekin)
+            
+            # DEBUG 
+            #print(f"step {step}")
+            #print(f"  E0      = {E0:.15e}")
+            #print(f"  e_real  = {e_real:.15e}")
+            #print(f"  epot    = {epot:.15e}")
+            #print(f"  |coord| = {np.linalg.norm(coords):.15e}")
 
     write_final_files(final_geo, final_vel, mol, vel)
 
