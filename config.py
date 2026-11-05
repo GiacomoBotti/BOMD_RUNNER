@@ -42,4 +42,5 @@ harmonic_gen = "hessian"			# hessian: cartesian harm forces; cnorm: normal modes
 # HESSIANATOR INPUT
 geomfile = "geom_test_hessian.xyz"		# File with geometries
 hdbfile = "hdb.out"				# Output file
+indexfile = "none"
 
