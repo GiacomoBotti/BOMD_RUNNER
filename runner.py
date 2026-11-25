@@ -271,6 +271,33 @@ def write_final_files(final_geo, final_vel, mol, vel):
         for sym, v in zip(symbols, vel):
             fv.write(f"{sym:2s} {v[0]:16.10e} {v[1]:16.10e} {v[2]:16.10e}\n")
 
+def project_rototranslation(coords_bohr, vel, masses_au, rcond=1e-12):
+    m = np.asarray(masses_au, float).reshape(-1)
+    r = np.asarray(coords_bohr, float)
+    v = np.asarray(vel, float)
+    total_mass = m.sum()
+    rcm = (m[:, None] * r).sum(axis=0) / total_mass
+    vcm = (m[:, None] * v).sum(axis=0) / total_mass
+    rho = r - rcm
+    u = v - vcm
+    L = np.sum(np.cross(rho, m[:, None] * u), axis=0)
+    I = np.zeros((3, 3))
+    for mi, ri in zip(m, rho):
+        I += mi * (np.dot(ri, ri) * np.eye(3) - np.outer(ri, ri))
+    omega = np.linalg.pinv(I, rcond=rcond) @ L
+    vnew = u - np.cross(omega, rho)
+    t0 = 0.5 * np.sum(m[:, None] * v**2)
+    tt = 0.5 * total_mass * np.dot(vcm, vcm)
+    tr = 0.5 * np.dot(omega, L)
+    tv = 0.5 * np.sum(m[:, None] * vnew**2)
+    pnew = np.sum(m[:, None] * vnew, axis=0)
+    lnew = np.sum(np.cross(rho, m[:, None] * vnew), axis=0)
+    return vnew, dict(L=L, L_projected=lnew, P_projected=pnew,
+                      omega=omega, T_total=t0, T_trans=tt, T_rot=tr,
+                      T_vib=tv, residual=t0-tt-tr-tv)
+
+
+
 def run_bomd():
     # -----------------------
     # Input
@@ -291,7 +318,7 @@ def run_bomd():
     mol.build()
 
     coords = mol.atom_coords()  # Bohr
-    coords0 = coords # Equilibrium geometry
+    coords0 = coords.copy() # Equilibrium geometry
     vel = np.loadtxt(velfile, skiprows=2, usecols=(1, 2, 3))
 
     if vel.shape != coords.shape:
@@ -442,7 +469,25 @@ def run_bomd():
             #print(f"  epot    = {epot:.15e}")
             #print(f"  |coord| = {np.linalg.norm(coords):.15e}")
 
+    # Preserve the original final velocities and write projected velocities.
+    # This operation is performed once, after the last integration step.
     write_final_files(final_geo, final_vel, mol, vel)
+    coords_final = mol.atom_coords(unit="Bohr")
+    vel_projected, info = project_rototranslation(coords_final, vel, mass)
+    projected_file = final_vel.rsplit(".", 1)
+    projected_file = (projected_file[0] + "_projected." + projected_file[1]
+                      if len(projected_file) == 2 else final_vel + "_projected")
+    write_final_files(final_geo, projected_file, mol, vel_projected)
+    print("\nFinal rototranslational projection:")
+    print(f"  |L| before: {np.linalg.norm(info['L']):.9e} hbar")
+    print(f"  |L| after:  {np.linalg.norm(info['L_projected']):.9e} hbar")
+    print(f"  |P| after:  {np.linalg.norm(info['P_projected']):.9e} a.u.")
+    print(f"  Removed Ttrans: {info['T_trans'] * AU_TO_CM1:.6f} cm^-1")
+    print(f"  Removed Trot:   {info['T_rot'] * AU_TO_CM1:.6f} cm^-1")
+    print(f"  Retained Tvib:  {info['T_vib'] * AU_TO_CM1:.6f} cm^-1")
+    print(f"  Energy closure: {info['residual']:.3e} Eh")
+    print(f"  Unprojected velocities: {final_vel}")
+    print(f"  Projected velocities:   {projected_file}")
 
 if __name__ == "__main__":
 
